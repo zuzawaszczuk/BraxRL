@@ -1,17 +1,22 @@
 import functools
 import jax
 from datetime import datetime
-import matplotlib.pyplot as plt
 from brax import envs
 from brax.io import model
 from brax.io import html
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.sac import train as sac
+import argparse
 
-env_name = 'ant'  # @param ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
+env_name = 'halfcheetah'  # @param ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
 backend = 'positional'  # @param ['generalized', 'positional', 'spring']
 
-# We determined some reasonable hyperparameters offline and share them here.
+
+parser = argparse.ArgumentParser("simple_example")
+parser.add_argument("counter", help="An integer will be increased by 1 and printed.", type=int)
+args = parser.parse_args()
+print(args.counter + 1)
+
 train_fn = {
 'inverted_pendulum': functools.partial(ppo.train, num_timesteps=2_000_000, num_evals=20, reward_scaling=10, episode_length=1000, normalize_observations=True, action_repeat=1, unroll_length=5, num_minibatches=32, num_updates_per_batch=4, discounting=0.97, learning_rate=3e-4, entropy_cost=1e-2, num_envs=2048, batch_size=1024, seed=1),
 'inverted_double_pendulum': functools.partial(ppo.train, num_timesteps=20_000_000, num_evals=20, reward_scaling=10, episode_length=1000, normalize_observations=True, action_repeat=1, unroll_length=5, num_minibatches=32, num_updates_per_batch=4, discounting=0.97, learning_rate=3e-4, entropy_cost=1e-2, num_envs=2048, batch_size=1024, seed=1),
@@ -25,9 +30,6 @@ train_fn = {
 'pusher': functools.partial(ppo.train, num_timesteps=50_000_000, num_evals=20, reward_scaling=5, episode_length=1000, normalize_observations=True, action_repeat=1, unroll_length=30, num_minibatches=16, num_updates_per_batch=8, discounting=0.95, learning_rate=3e-4,entropy_cost=1e-2, num_envs=2048, batch_size=512, seed=3),
 }[env_name]
 
-max_y = {'ant': 8000, 'halfcheetah': 8000, 'hopper': 2500, 'humanoid': 13000, 'humanoidstandup': 75_000, 'reacher': 5, 'walker2d': 5000, 'pusher': 0}[env_name]
-min_y = {'reacher': -100, 'pusher': -150}.get(env_name, 0)
-
 xdata, ydata = [], []
 times = [datetime.now()]
 
@@ -38,37 +40,10 @@ def progress(num_steps, metrics):
     ydata.append(metrics['eval/episode_reward'])
     print("Num steps: {} metrics: {}".format(num_steps, metrics["eval/episode_reward"]))
 
-   
+
 env = envs.get_environment(env_name=env_name, backend=backend)
 make_inference_fn, params, _ = train_fn(environment=env, progress_fn=progress)
 model.save_params('ppo_ant', params)
 
 # print(f'time to jit: {times[1] - times[0]}')
 # print(f'time to train: {times[-1] - times[1]}')
-
-env = envs.create(env_name=env_name, backend=backend)
-inference_fn = make_inference_fn(params)
-
-jit_env_reset = jax.jit(env.reset)
-jit_env_step = jax.jit(env.step)
-jit_inference_fn = jax.jit(inference_fn)
-
-rollout = []
-rng = jax.random.PRNGKey(seed=1)
-state = jit_env_reset(rng=rng)
-for _ in range(1000):
-    rollout.append(state.pipeline_state)
-    act_rng, rng = jax.random.split(rng)
-    act, _ = jit_inference_fn(state.obs, act_rng)
-    state = jit_env_step(state, act)
-
-html_string = html.render(env.sys.tree_replace({'opt.timestep': env.dt}), rollout)
-with open("ant_moving.html", "w", encoding="utf-8") as f:
-    f.write(html_string)
-
-plt.xlim([0, train_fn.keywords['num_timesteps']])
-plt.ylim([min_y, max_y])
-plt.xlabel('# environment steps')
-plt.ylabel('reward per episode')
-plt.plot(xdata, ydata)
-plt.savefig("env_name")
