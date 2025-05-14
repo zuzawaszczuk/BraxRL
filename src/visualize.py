@@ -1,5 +1,20 @@
+from brax.training.agents.ppo.checkpoint import load_policy
+from brax import envs
+import jax
+from brax.io import html
+import argparse
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--env_name', type=str, default='ant')
+args = parser.parse_args()
+
+env_name = args.env_name
+backend = 'positional'
+checkpoint_path = f"reports/checkpoints/{env_name}"
+
+inference_fn = load_policy(checkpoint_path)
 env = envs.create(env_name=env_name, backend=backend)
-inference_fn = make_inference_fn(params)
 
 jit_env_reset = jax.jit(env.reset)
 jit_env_step = jax.jit(env.step)

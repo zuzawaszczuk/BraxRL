@@ -12,11 +12,19 @@ module load Miniconda3/4.9.2
 eval "$(conda shell.bash hook)"
 
 # Activate enviroment
-conda activate /net/tscratch/people/plguser/brax_env
+conda activate /net/tscratch/people/plgzwaszczuk/brax_env
 
 # Navigate to project directory
-cd /net/tscratch/people/plguser
+cd /net/tscratch/people/plgzwaszczuk/BraxRL
 
 # Run training
-python BraxRL/src/train2.py
+['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
+python src/train2.py
 
+for env in ant halfcheetah hopper humanoid humanoidstandup inverted_pendulum inverted_double_pendulum pusher reacher walker2d; do
+  echo "Train env: $env"
+  python src/train.py --env_name "$env"
+
+  echo "Visualize env: $env"
+  python src/visualize.py --env_name "$env"
+done
