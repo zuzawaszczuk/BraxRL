@@ -28,8 +28,7 @@ class ReplayBuffer:
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size+1, self.capacity)
 
-    def sample(self, batch_size, key):
-        key, subkey = jax.random.split(key)
+    def sample(self, batch_size, subkey):
         idx = jax.random.randint(subkey, (batch_size), 0, self.size)
         return (
             jnp.array(self.state[idx], dtype=jnp.float32),

@@ -1,6 +1,7 @@
 import jax
-import time
 import optax
+import gc
+import numpy as np
 from replay_buffer import ReplayBuffer
 from mlp import MLP
 from jax import jit
@@ -8,6 +9,9 @@ from jax import numpy as jnp
 from flax.training.train_state import TrainState
 from flax.core import unfreeze
 from brax.envs import create
+from functools import partial
+from jax import lax
+
 
 
 def TD3_train(
@@ -30,33 +34,39 @@ def TD3_train(
         critic_size=[256, 256],
         actor_update=2
 ):
+
     env = create(env_name)
     state = env.reset(jax.random.PRNGKey(seed))
     obs_space = state.obs.shape[-1]
     action_space = env.action_size
+    del env
+    gc.collect()
+
+
+    envs = create(env_name, action_repeat=action_repeat, batch_size=num_envs)
+
 
     replay_buffer = ReplayBuffer(int(max_replay_size), (obs_space,), (action_space,))
 
-    actor_key, critic_key1, critic_key2, loop_key = jax.random.split(jax.random.PRNGKey(seed), 4)
+    actor_key, critic_key1, critic_key2, loop_key, add_key = jax.random.split(jax.random.PRNGKey(seed), 5)
 
     actor_s = create_trainstate(actor_key, actor_size, optax.adam, learning_rate, obs_space, action_space, True)
     critic_s1 = create_trainstate(critic_key1, critic_size, optax.adam, learning_rate, obs_space+action_space, 1)
     critic_s2 = create_trainstate(critic_key2, critic_size, optax.adam, learning_rate, obs_space+action_space, 1)
 
-
     actor_target = unfreeze(actor_s.params).copy()
     critic_target1 = unfreeze(critic_s1.params).copy()
     critic_target2 = unfreeze(critic_s2.params).copy()
 
-    replay_buffer, obs_mean, obs_var, count = add_action(replay_buffer, env_name,
-                                                          num_envs, actor_s,
-                                                          min_replay_size, episode_length, normalize_observations,
-                                                          action_repeat=action_repeat, reward_scalling=reward_scalling)
+
+    replay_buffer, obs_mean, obs_var, count = add_action(replay_buffer, envs, num_envs, actor_s, min_replay_size,
+                                                          episode_length, normalize_observations, obs_space=obs_space,
+                                                            action_space=action_space, key=add_key,action_repeat=action_repeat,
+                                                              reward_scalling=reward_scalling)
 
     eval_step = num_timesteps // num_evals
     reward_eval = []
     for step in range(num_timesteps):
-
         key, add_key, loop_key, eval_key, train_key = jax.random.split(loop_key, 5)
         if step % eval_step != 0:
 
@@ -66,28 +76,42 @@ def TD3_train(
                                                                                                          critic_target1, critic_target2, train_key,
                                                                                                          actor_update=actor_update, gamma=discounting)
 
-            replay_buffer, obs_mean, obs_var, count = add_action(replay_buffer, env_name, num_envs, actor_s, grad_update_per_step,
-                                                           episode_length, normalize_observations, action_repeat, mean=obs_mean,
-                                                             var=obs_var, obs_count=count, key=add_key, reward_scalling=reward_scalling)
-
+            replay_buffer, obs_mean, obs_var, count = add_action(replay_buffer, envs, num_envs, actor_s, grad_update_per_step,
+                                                           episode_length, normalize_observations, action_repeat,
+                                                           obs_space=obs_space, action_space=action_space,
+                                                           mean=obs_mean,var=obs_var, obs_count=count,
+                                                             key=add_key, reward_scalling=reward_scalling)
         else:
             reward_eval.append(eval(env_name, episode_length, actor_s, action_repeat,
                                      eval_key, normalize_observations, obs_mean, obs_var))
-
     return
-
 
 @jit
 def normalize(obs, mean, var):
     return (obs - mean)/jnp.sqrt(var+1e-8)
 
 
-def add_action(replaybuffer: ReplayBuffer, env_name, num_env, actor_trainstate, size,
-               action_before, normalize_obs, action_repeat, action_std=0.1,
-               key=jax.random.PRNGKey(int(time.time())), mean=None, var=None,
-                obs_count=None, reward_scalling=1):
 
-    @jit
+
+@partial(jit, static_argnums=(0, 2, 4))
+def rollout(action_repeat, state, num_env, actions, envs):
+    def body(i, carry):
+        state, total_reward = carry
+        state = envs.step(state, actions)
+        reward = jnp.where(state.done, 0, state.reward)
+        total_reward += reward
+        return (state, total_reward)
+
+    total_reward = jnp.zeros(num_env)
+    final_state, total_reward = lax.fori_loop(0, action_repeat, body, (state, total_reward))
+
+    return total_reward, final_state
+
+
+def add_action(replaybuffer: ReplayBuffer, envs, num_env, actor_trainstate, size,
+               action_before, normalize_obs, action_repeat, key, obs_space, action_space, action_std=0.1,
+               mean=None, var=None, obs_count=None, reward_scalling=1):
+
     def update_stats(mean, var, count, new_obs):
         batch_mean = jnp.mean(new_obs, axis=0)
         batch_var = jnp.var(new_obs, axis=0)
@@ -95,14 +119,13 @@ def add_action(replaybuffer: ReplayBuffer, env_name, num_env, actor_trainstate, 
         new_count = count + num_env
         mean = (mean * count + batch_mean) / new_count
         var = (var * count + batch_var) / new_count
-
         return mean, var, new_count
 
-    env = create(env_name, batch_size=num_env)
-    state = env.reset(key)
-    obs_space = state.obs.shape[-1]
-    action_space = env.action_size
+    def true_norm(state):
+        return normalize(state.obs, local_mean, local_var)
 
+    def false_norm(state):
+        return state.obs
 
     count = obs_count if obs_count is not None else 0
     local_mean = mean if mean is not None else jnp.zeros(obs_space)
@@ -111,40 +134,37 @@ def add_action(replaybuffer: ReplayBuffer, env_name, num_env, actor_trainstate, 
     counter = 0
     while counter < size:
         key, subkey, subkey_normal = jax.random.split(key, 3)
-        state = env.reset(subkey)
+        state = envs.reset(subkey)
+        action_number = action_before // action_repeat
 
-        for _ in range(action_before):
+        for _ in range(action_number):
             subkey, key = jax.random.split(subkey)
             actions = jax.random.uniform(subkey, (num_env, action_space), minval=-1, maxval=1)
-            state = env.step(state, actions)
+            state = envs.step(state, actions)
             local_mean, local_var, count = update_stats(local_mean, local_var, count, state.obs)
-
         normal_noise = jax.random.normal(subkey_normal, (num_env, action_space)) * action_std
-        obs = state.obs
-        if normalize_obs:
-            obs = normalize(state.obs, local_mean, local_var)
-        actions = actor_trainstate.apply_fn(actor_trainstate.params, obs)
+
+        obs = lax.cond(normalize_obs, true_norm, false_norm, state)
+        actions = apply_fn(actor_trainstate, obs)
         actions = jnp.clip(actions+normal_noise, -1, 1)
-        total_reward = jnp.zeros(num_env)
 
-        for _ in range(action_repeat):
-            new_state = env.step(state, actions)
-            reward = jnp.where(new_state.done, 0, new_state.reward)
-            total_reward += reward
+        total_reward, new_state = rollout(action_repeat, state, num_env, actions, envs)
 
+        new_obs = lax.cond(normalize_obs, true_norm, false_norm, new_state)
 
-        new_obs = new_state.obs
-        if normalize_obs:
-            new_obs = normalize(new_state.obs, local_mean, local_var)
+        obs = np.array(obs)
+        action = np.array(actions)
+        reward = np.array(reward_scalling*total_reward)
+        new_obs = np.array(new_obs)
+        done = np.array(new_state.done)
 
         for i in range(num_env):
-            replaybuffer.add(obs[i], reward_scalling*total_reward[i], new_obs[i], new_state.reward[i], new_state.done[i])
-
+            replaybuffer.add(obs[i], action[i], new_obs[i], reward[i], done[i])
         counter += num_env
 
     return replaybuffer, local_mean, local_var, count
 
-
+@jit
 def soft_update(params, target_params, ro):
     return jax.tree_map(lambda x, y: ro * x + (1 - ro) * y, target_params, params)
 
@@ -176,17 +196,22 @@ def train_model(epochs, replay_buffer, batch_size,
             actor_s, critic1_target, critic2_target, actor_target = actor_result[0], actor_result[1], actor_result[2], actor_result[3]
     return critic_s1, critic_s2, actor_s, critic1_target, critic2_target, actor_target
 
-
+@jit
 def action_corrupt(mi, key, std, loss_clip, action_clip):
     batch_size, action_dim = mi.shape
-    key, subkey = jax.random.split(key)
-    eps = jax.random.normal(subkey, (batch_size, action_dim)) * std
+    eps = jax.random.normal(key, (batch_size, action_dim)) * std
     return jnp.clip(mi + jnp.clip(eps, -loss_clip, loss_clip), -action_clip, action_clip)
 
 
 @jit
 def update_model(trainstate, grads):
     return trainstate.apply_gradients(grads=grads)
+
+
+@jit
+def apply_fn(train_state, obs):
+    return train_state.apply_fn(train_state.params, obs)
+
 
 
 def update_actor(batch, critic_state1, critic_state2, actor_state,
@@ -206,25 +231,27 @@ def update_actor(batch, critic_state1, critic_state2, actor_state,
     return new_actor_state, critic_target1, critic_target2, actor_target
 
 
-@jit
+
 def update_critic(key, batch, actor_state, critic_state1, critic_state2,
                   actor_target, critic_target1, critic_target2, loss_clip, action_clip, gamma, std):
 
-    def loss_critic(params, x, y):
+    def loss_critic(params, x):
+
+        target = jnp.min(jnp.stack([critic_state1.apply_fn(critic_target1, x),
+                        critic_state2.apply_fn(critic_target2, x)], axis=0), axis=0)
+        y = batch[2][:, None] + gamma * (1 - batch[4][:, None]) * target
+        x = jnp.concat([batch[0], batch[1]], axis=-1)
         y_pred = critic_state1.apply_fn(params, x)
         return jnp.mean(jnp.pow((y_pred - y), 2))
 
     mi = actor_state.apply_fn(actor_target, batch[3])
     a = action_corrupt(mi, key, std, loss_clip, action_clip)
     x = jnp.concat([batch[3], a], axis=-1)
-    target = jnp.min(jnp.stack([critic_state1.apply_fn(critic_target1, x),
-                     critic_state2.apply_fn(critic_target2, x)], axis=0), axis=0)
-    y = batch[2][:, None] + gamma * (1 - batch[4][:, None]) * target
-    x = jnp.concat([batch[0], batch[1]], axis=-1)
+
 
     grad_fn = jax.value_and_grad(loss_critic)
-    _, grads1 = grad_fn(critic_state1.params, x, y)
-    _, grads2 = grad_fn(critic_state2.params, x, y)
+    _, grads1 = grad_fn(critic_state1.params, x)
+    _, grads2 = grad_fn(critic_state2.params, x)
 
     new_critic_s1 = critic_state1.apply_gradients(grads=grads1)
     new_critic_s2 = critic_state2.apply_gradients(grads=grads2)
@@ -246,4 +273,6 @@ def eval(env_name, episode_length, actor_trainstate, action_repeat, key, obs_nor
             reward += state.reward
             if state.done:
                 return reward
+    del env
+    gc.collect()
     return reward
