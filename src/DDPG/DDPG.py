@@ -14,7 +14,8 @@ params = {
     "learning_rate": 1e-3,
     "gamma": 0.99,
     "tau": 0.005,
-    "train_episode": 4
+    "train_episode": 100,
+    "buffer_capacity": 1000,
 }
 
 
@@ -41,8 +42,9 @@ actor_params, critic_params, episode_rewards = train_ddpg(
     batch_size=params["batch_size"],
     learning_rate=params["learning_rate"],
     gamma=params["gamma"],
-    tau=params["tau"]
+    tau=params["tau"],
+    buffer_capacity=params["buffer_capacity"],
 )
 create_plot(episode_rewards)
 save_model((actor_params, critic_params), params["save_path"])
-visualize_policy(actor, actor_params, env)
+visualize_policy(actor, actor_params, env, episodes=2, max_steps=500)

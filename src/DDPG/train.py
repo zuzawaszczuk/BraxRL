@@ -10,13 +10,14 @@ def soft_update(target_params, source_params, tau):
     return jax.tree_util.tree_map(lambda t, s: (1 - tau) * t + tau * s, target_params, source_params)
 
 
-def update_critic(critic_state, critic, target_critic_params, target_actor_params,
-                  actor, batch_s, batch_a, batch_r, batch_ns, batch_d, gamma):
+@jax.jit
+def update_critic(critic_state, target_critic_params, target_actor_params,
+                  actor_state, batch_s, batch_a, batch_r, batch_ns, batch_d, gamma):
     def loss_fn(params):
-        next_a = actor.apply(target_actor_params, batch_ns)
-        target_q = critic.apply(target_critic_params, batch_ns, next_a)
+        next_a = actor_state.apply_fn(target_actor_params, batch_ns)
+        target_q = critic_state.apply_fn(target_critic_params, batch_ns, next_a)
         y = batch_r + gamma * (1. - batch_d) * jnp.squeeze(target_q)
-        q = jnp.squeeze(critic.apply(params, batch_s, batch_a))
+        q = jnp.squeeze(critic_state.apply_fn(params, batch_s, batch_a))
         loss = jnp.mean((q - y) ** 2)
         return loss
 
@@ -24,10 +25,11 @@ def update_critic(critic_state, critic, target_critic_params, target_actor_param
     return critic_state.apply_gradients(grads=grads)
 
 
-def update_actor(actor_state, actor, critic, critic_params, batch_s):
+@jax.jit
+def update_actor(actor_state, critic_state, batch_s):
     def loss_fn(params):
-        a = actor.apply(params, batch_s)
-        q = critic.apply(critic_params, batch_s, a)
+        a = actor_state.apply_fn(params, batch_s)
+        q = critic_state.apply_fn(critic_state.params, batch_s, a)
         return -jnp.mean(q)
 
     grads = jax.grad(loss_fn)(actor_state.params)
@@ -35,7 +37,7 @@ def update_actor(actor_state, actor, critic, critic_params, batch_s):
 
 
 def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
-               learning_rate=1e-3, gamma=0.99, tau=0.005):
+               learning_rate=1e-3, gamma=0.99, tau=0.005, buffer_capacity=1000):
     key = jax.random.PRNGKey(0)
     state = env.reset(rng=key)
 
@@ -55,7 +57,7 @@ def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
     actor_state = TrainState.create(apply_fn=actor.apply, params=actor_params, tx=optax.adam(learning_rate))
     critic_state = TrainState.create(apply_fn=critic.apply, params=critic_params, tx=optax.adam(learning_rate))
 
-    replay_buffer = ReplayBuffer()
+    replay_buffer = ReplayBuffer(buffer_capacity)
     episode_rewards = []
     print("Training started")
     for ep in range(episodes):
@@ -65,13 +67,12 @@ def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
         ep_reward = 0
 
         for step in range(max_steps):
-            action = np.array(actor.apply(actor_state.params, obs)) + 0.1 * np.random.randn(action_dim)
+            action = np.array(actor_state.apply_fn(actor_state.params, obs)) + 0.1 * np.random.randn(action_dim)
             action = np.clip(action, -1.0, 1.0)
             state = env.step(state, action)
             next_obs = np.array(state.obs)
             reward = state.reward
             done = state.done
-
             replay_buffer.push(obs, action, reward, next_obs, float(done))
             obs = next_obs
             ep_reward += reward
@@ -84,9 +85,9 @@ def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
                 ns = jnp.array(ns)
                 d = jnp.array(d)
 
-                critic_state = update_critic(critic_state, critic, target_critic_params,
-                                             target_actor_params, actor, s, a, r, ns, d, gamma)
-                actor_state = update_actor(actor_state, actor, critic, critic_state.params, s)
+                critic_state = update_critic(critic_state, target_critic_params,
+                                             target_actor_params, actor_state, s, a, r, ns, d, gamma)
+                actor_state = update_actor(actor_state, critic_state, s)
 
                 target_actor_params = soft_update(target_actor_params, actor_state.params, tau)
                 target_critic_params = soft_update(target_critic_params, critic_state.params, tau)
