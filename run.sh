@@ -18,13 +18,15 @@ conda activate /net/tscratch/people/plgzwaszczuk/brax_env
 cd /net/tscratch/people/plgzwaszczuk/BraxRL
 
 # Run training
-['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
-python src/train2.py
+# ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
+# 
+# python src/train.py --env_name "ant"
+#python src/train_with_visualize.py --env_name "ant"
 
-for env in ant halfcheetah hopper humanoid humanoidstandup inverted_pendulum inverted_double_pendulum pusher reacher walker2d; do
+for env in ant halfcheetah humanoid humanoidstandup inverted_pendulum inverted_double_pendulum pusher reacher; do
   echo "Train env: $env"
-  python src/train.py --env_name "$env"
+  python src/train_with_visualize.py --env_name "$env"
 
-  echo "Visualize env: $env"
-  python src/visualize.py --env_name "$env"
-done
+#   echo "Visualize env: $env"
+#   python src/visualize.py --env_name "$env"
+#   done

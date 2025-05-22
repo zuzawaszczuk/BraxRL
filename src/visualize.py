@@ -3,6 +3,7 @@ from brax import envs
 import jax
 from brax.io import html
 import argparse
+import os
 
 
 parser = argparse.ArgumentParser()
@@ -11,7 +12,8 @@ args = parser.parse_args()
 
 env_name = args.env_name
 backend = 'positional'
-checkpoint_path = f"reports/checkpoints/{env_name}"
+# checkpoint_path = f"reports/checkpoints/{env_name}"
+checkpoint_path = os.path.abspath("reports/checkpoints/ant/000050135040")
 
 inference_fn = load_policy(checkpoint_path)
 env = envs.create(env_name=env_name, backend=backend)
