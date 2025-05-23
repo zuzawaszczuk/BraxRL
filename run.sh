@@ -26,7 +26,7 @@ cd /net/tscratch/people/plgzwaszczuk/BraxRL
 for env in ant halfcheetah humanoid humanoidstandup inverted_pendulum inverted_double_pendulum pusher reacher; do
   echo "Train env: $env"
   python src/train_with_visualize.py --env_name "$env"
-
+done
 #   echo "Visualize env: $env"
 #   python src/visualize.py --env_name "$env"
 #   done
