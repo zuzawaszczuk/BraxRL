@@ -8,12 +8,15 @@
 
 ## What is here?
 
-
+BraxRL is a lightweight research project focused on implementing and experimenting with reinforcement learning algorithms in JAX.
+It includes clean implementations of SAC, TD3, and DDPG, and tests them on continuous control tasks using the MuJoCo physics engine via Brax.
+The goal is to provide a codebase for learning and benchmarking modern RL algorithms on GPU-accelerated environments.
 
 ## Getting started
-### Version with UV package manager
+### Version with UV Package Manager
 
-When you are using Athena HPC firstly, set up enviroment variables so venvs and cache were in SCRATCH not in HOME. (In home you have limit only 10GB)
+When using the Athena HPC, first set up environment variables so that virtual environments and cache are stored in **SCRATCH**, not in **HOME** (HOME has a 10 GB limit).  
+If you want to make these variables persistent, add them to your `.bashrc` file in your HOME directory.
 
 ```bash
 export UV_CACHE_DIR=/net/tscratch/people/{plguser}/.uv/cache
@@ -21,13 +24,11 @@ export UV_PROJECT_ENVIRONMENT=/net/tscratch/people/{plguser}/.uv/envs
 export UV_LINK_MODE=copy
 ```
 
-Then download UV package manager with this command.
+Then install the UV package manager:
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+`curl -LsSf https://astral.sh/uv/install.sh | sh`
 
-Then go into project folder and run command to download all libraries and dependencies neccesarry for project:
+Go into the project folder and install all required libraries and dependencies:
 ```bash
 cd BraxRL
 uv sync
@@ -35,14 +36,13 @@ uv sync
 
 ## Running scripts
 
-Then when you are on Athena you need to prepare run.sh script to run job on GPU.
-If you are running localy simple run will be enaugh to create checkpoints, figures, save params and visualizations.
+If you are running locally, a simple command is enough to create checkpoints, figures, save parameters, and visualizations:
 
 ```bash
 python src/train_with_visualize.py --env_name "ant"
 ```
 
-When you are on Athena you need to prepare run.sh script to run job on GPU.
+On Athena, you need to prepare a run.sh script to submit a job to the GPU queue:
 
 ```bash
 #!/bin/bash
@@ -56,7 +56,7 @@ When you are on Athena you need to prepare run.sh script to run job on GPU.
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 
-# Activate enviroment
+# Activate environment
 source  /net/tscratch/people/{plguser}/.uv/envs/bin/activate
 
 # Navigate to project directory
@@ -65,4 +65,8 @@ cd /net/tscratch/people/{plguser}/BraxRL
 python utils/test_jax_speed.py
 python src/train_with_visualize.py --env_name "ant"
 ```
+
+Submit the job with sbatch `run.sh`.
+
+Check the job status with `squeue -u $USER`.
 
