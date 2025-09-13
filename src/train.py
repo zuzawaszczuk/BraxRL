@@ -7,8 +7,6 @@ from brax.training.agents.ppo.train import train as ppo_train
 from plots import make_plot
 import argparse
 import os
-import ml_collections
-# ml_collections.ConfigDict.to_json = ml_collections.ConfigDict.to_json_best_effort
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env_name', type=str, default='ant')
