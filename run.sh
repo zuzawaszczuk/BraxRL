@@ -10,10 +10,12 @@
 #SBATCH --time=04:00:00
 
 # Activate environment
-source  /net/tscratch/people/plgzwaszczuk/.uv/envs/bin/activate 
+source /net/tscratch/people/{plguser}/.uv/envs/bin/activate 
 
 # Navigate to project directory
-cd /net/tscratch/people/plgzwaszczuk/BraxRL
+cd /net/tscratch/people/{plguser}/BraxRL
+
+### {plguser} = your current login
 
 python utils/test_jax_speed.py
 python src/train_with_visualize.py --env_name "ant"
