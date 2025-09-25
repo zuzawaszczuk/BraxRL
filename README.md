@@ -1,7 +1,5 @@
 # KNSI GOLEM BraxRL Mujoco Repository
 
-![](https://gymnasium.farama.org/v0.28.1/_images/ant.gif)
-
 [![Flake8 Linting](https://github.com/Dnafivuq/golem_template/actions/workflows/lint.yml/badge.svg)](https://github.com/Dnafivuq/golem_template/actions/workflows/lint.yml)
 [![Pytest](https://github.com/Dnafivuq/golem_template/actions/workflows/test.yml/badge.svg)](https://github.com/Dnafivuq/golem_template/actions/workflows/test.yml)
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
