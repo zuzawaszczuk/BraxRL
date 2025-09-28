@@ -1,107 +1,89 @@
-# KNSI GOLEM Template Repository
+# KNSI GOLEM BraxRL Mujoco Repository
+
 [![Flake8 Linting](https://github.com/Dnafivuq/golem_template/actions/workflows/lint.yml/badge.svg)](https://github.com/Dnafivuq/golem_template/actions/workflows/lint.yml)
 [![Pytest](https://github.com/Dnafivuq/golem_template/actions/workflows/test.yml/badge.svg)](https://github.com/Dnafivuq/golem_template/actions/workflows/test.yml)
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-
-Template repository for KNSI GOLEM python projects made from the [cookiecutter data science template](https://github.com/drivendataorg/cookiecutter-data-science).
-
-This repository's goal is to provide out-of-the-box boilerplate code with a clean project file structure.
-Additionally, the template includes a GitHub CI pipeline with pytest and flake8 checks implemented.
-
-
-You are free to delete any unnecessary folders and files. However, it is recommended to maintain the overall file structure to ensure clean code and compatibility with other KNSI GOLEM repositories.
 ## What is here?
-### Code and Files Structure
-To ensure a transparent and easily understandable file structure for external users each module, from making plots to training models, is given its respective file in the `src` folder. A full description of the file structure is provided in the [Project Organization](#project-organization) section.
 
+BraxRL is a lightweight research project focused on implementing and experimenting with reinforcement learning algorithms in JAX.
+It includes clean implementations of SAC, TD3, and DDPG, and tests them on continuous control tasks using the MuJoCo physics engine via Brax.
+The goal is to provide a codebase for learning and benchmarking modern RL algorithms on GPU-accelerated environments.
 
-**How to run code in repository?**
+## Getting started
+### Version with UV Package Manager
+
+When using the Athena HPC, first set up environment variables so that virtual environments and cache are stored in **SCRATCH**, not in **HOME** (HOME has a 10 GB limit).  
+If you want to prepare local environment go to header **UV manager installation**, which is below.
+
 ```bash
-python3 -m src.dataset
+# Setup .bashrc file adding these lines there on Athena HPC
+export UV_CACHE_DIR=/net/tscratch/people/{plguser}/.uv/cache
+export UV_PROJECT_ENVIRONMENT=/net/tscratch/people/{plguser}/.uv/envs
+export UV_LINK_MODE=copy
+
+# UV manager installation
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# All required libraries and dependencies installation in project directory:
+cd BraxRL
+uv sync
 ```
-### Readme
-Another goal of this repository is to provide a [template README](/TEMPLATE_README.md) that can be easily edited and adapted. The README serves as a foundation to help users create their own well-structured documentation, ensuring consistency across all projects within our repository.
 
-## Additional tips and info
-To further help with development, it is recommended to use useful tools for managing dependencies and environment configurations.
-### venv
-Python's `venv` allows you to easily manage isolated environments for your projects, enabling you to work with specific module/library versions or even different Python versions without conflicting with the globally installed Python interpreter.
+## Available Enviroments
 
+ - ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']. 
 
-How to use:
+When you choose one enviroment, substitude e.g. {ENV_NAME} = ant in further sections.
+
+## Running scripts - only them and with SLURM configuration 
+
 ```bash
-python3 -m venv .venv  # Create venv  
-source .venv/bin/activate  # Activate venv  
-pip install -r requirements.txt  # Install requirements to venv  
+# If you are running only scripts, should activate firstly venv environment:
+source /net/tscratch/people/{plguser}/.uv/envs/bin/activate
+
+# Then, you may type line in order to launch ant's training by uv manager  
+uv run src/train_with_visualize.py --env_name "{ENV_NAME}" 
+
+# Or with usual interpreter
+python src/train_with_visualize.py --env_name "{ENV_NAME}" 
 ```
-Basic Python libraries like pytest are already included in the requirements.
 
----
+In order to launch {ENV_NAME} environment, go to reports/visualizations directory and launch {ENV_NAME}.html format in browser.
 
-### dotenv
-The dotenv library allows you to define environment constants or secrets, such as API keys, in a single place. It simplifies the management of environment variables by letting you configure them in a `.env` file.
+* On Athena, you need to prepare a run.sh script to submit a job to the GPU queue:
 
-
-The `python-dotenv` library has already been added to the requirements.
-
-**.env file example:**
 ```bash
-API_KEY = "KNSI_GOLEM_API_KEY"
+#!/bin/bash
+#SBATCH --job-name=train_braxrl
+#SBATCH --output=slurm_%j.out
+#SBATCH --error=slurm_%j.err
+#SBATCH --partition=plgrid-gpu-a100
+#SBATCH --account=plggolemml25-gpu-a100
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=60G
+#SBATCH --cpus-per-task=8
+#SBATCH --time=04:00:00
+
+# Activate environment
+source /net/tscratch/people/{plguser}/.uv/envs/bin/activate
+
+# Navigate to project directory
+cd /net/tscratch/people/{plguser}/BraxRL
+
+### {plguser} = your current login
+
+python utils/test_jax_speed.py
+python src/train_with_visualize.py --env_name "{ENV_NAME}"
+
+# Then, give an access to file and launch it easily:
+chmod +x run.sh
+./run.sh
 ```
 
-**python code example:**
-```python
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-api_key = os.getenv("API_KEY")
-```
-
-## Project Organization
-
-```
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- Project's docs
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-├── setup.cfg          <- Configuration file for flake8 and pytest
-│
-└── src   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes src a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
-    │   └── train.py            <- Code to train models
-    │
-    └── plots.py                <- Code to create visualizations
+###  Check the job status in order to look on resource queue typing:
+```bash
+squeue -u $USER
 ```
