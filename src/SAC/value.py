@@ -1,11 +1,7 @@
 from flax import linen as nn
 import jax.numpy as jnp
 
-
-class ActorNetwork(nn.Module):
-    lr: float
-    input_dims: int
-    n_actions: int
+class ValueNetwork(nn.Module):
     fc1_dims: int
     fc2_dims: int
 
@@ -15,7 +11,5 @@ class ActorNetwork(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(self.fc2_dims)(x)
         x = nn.relu(x)
-
-        
         x = nn.Dense(1)(x)
         return x
