@@ -1,5 +1,5 @@
 import random
-import numpy as np
+import jax.numpy as jnp
 from collections import deque
 
 
@@ -13,7 +13,7 @@ class ReplayBuffer:
     def sample(self, batch_size=64):
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
-        return map(np.array, (states, actions, rewards, next_states, dones))
+        return map(jnp.array, (states, actions, rewards, next_states, dones))
 
     def __len__(self):
         return len(self.buffer)

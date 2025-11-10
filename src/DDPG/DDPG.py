@@ -9,13 +9,13 @@ params = {
     "env_name": "ant",
     "episodes": 100,
     "max_steps": 1000,
-    "batch_size": 64,
+    "batch_size": 32,
     "save_path": "ddpg_model.pkl",
     "learning_rate": 1e-3,
     "gamma": 0.99,
     "tau": 0.005,
     "train_episode": 100,
-    "buffer_capacity": 1000,
+    "buffer_capacity": 80,
 }
 
 
@@ -29,7 +29,7 @@ def load_model(filename):
         return pickle.load(f)
 
 
-env = create(env_name=params["env_name"], backend='generalized')
+env = create(env_name=params["env_name"])
 actor = Actor(action_dim=env.action_size)
 critic = Critic()
 
