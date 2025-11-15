@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
 import optax
-from replay_buffer import ReplayBuffer
 from flax.training.train_state import TrainState
-import numpy as np
+from replay_buffer import ReplayBuffer
+from brax.envs import create
+
 
 @jax.jit
 def soft_update(target_params, source_params, tau):
@@ -18,8 +19,7 @@ def update_critic(critic_state, target_critic_params, target_actor_params,
         target_q = critic_state.apply_fn(target_critic_params, batch_ns, next_a)
         y = batch_r + gamma * (1. - batch_d) * jnp.squeeze(target_q)
         q = jnp.squeeze(critic_state.apply_fn(params, batch_s, batch_a))
-        loss = jnp.mean((q - y) ** 2)
-        return loss
+        return jnp.mean((q - y) ** 2)
 
     grads = jax.grad(loss_fn)(critic_state.params)
     return critic_state.apply_gradients(grads=grads)
@@ -36,19 +36,20 @@ def update_actor(actor_state, critic_state, batch_s):
     return actor_state.apply_gradients(grads=grads)
 
 
-def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
-               learning_rate=1e-3, gamma=0.99, tau=0.005, buffer_capacity=1000,
-               exploration_noise=0.1):
+def train_ddpg(actor, critic, env_name, episodes=100, max_steps=1000, batch_size=8,
+               learning_rate=1e-3, gamma=0.99, tau=0.005, buffer_capacity=100000,
+               exploration_noise=0.01):
 
     key = jax.random.PRNGKey(0)
     # Split key for env reset and model init
     key, env_key, actor_key, critic_key = jax.random.split(key, 4)
+    env = create(env_name=env_name)
     state = env.reset(rng=env_key)
 
     obs_dim = state.obs.shape[0]
     action_dim = env.action_size
 
-    # Init params
+    # Initialize params
     dummy_obs = jnp.ones((obs_dim,))
     dummy_action = jnp.ones((action_dim,))
     actor_params = actor.init(actor_key, dummy_obs)
@@ -57,55 +58,65 @@ def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
     target_actor_params = actor_params
     target_critic_params = critic_params
 
-    # Init states
+    # Initialize training states
     actor_state = TrainState.create(apply_fn=actor.apply, params=actor_params, tx=optax.adam(learning_rate))
     critic_state = TrainState.create(apply_fn=critic.apply, params=critic_params, tx=optax.adam(learning_rate))
 
-    @jax.jit
-    def select_action_jit(params, obs, key):
-        action = actor_state.apply_fn(params, obs)
-        noise = jax.random.normal(key, shape=(action_dim,)) * exploration_noise
-        action = jnp.clip(action + noise, -1.0, 1.0)
-        return action
+    # Initialize ReplayBuffer
+    replay_buffer = ReplayBuffer.create(obs_dim=obs_dim, act_dim=action_dim, capacity=buffer_capacity)
 
-    replay_buffer = ReplayBuffer(buffer_capacity)
-    episode_rewards = []
+    @jax.jit
+    def select_action(params, obs, key):
+        action = actor.apply(params, obs)
+        noise = jax.random.normal(key, shape=action.shape) * exploration_noise
+        return jnp.clip(action + noise, -1.0, 1.0)
+
+    @jax.jit
+    def train_step(actor_state, critic_state, target_actor_params, target_critic_params, replay_buffer, key):
+        key, sample_key = jax.random.split(key)
+        s, a, r, ns, d = replay_buffer.sample(sample_key, batch_size)
+
+        critic_state = update_critic(critic_state, target_critic_params,
+                                     target_actor_params, actor_state, s, a, r, ns, d, gamma)
+        actor_state = update_actor(actor_state, critic_state, s)
+
+        target_actor_params = soft_update(target_actor_params, actor_state.params, tau)
+        target_critic_params = soft_update(target_critic_params, critic_state.params, tau)
+
+        return actor_state, critic_state, target_actor_params, target_critic_params, key
+
+    jit_env_step = jax.jit(env.step)
+
     print("Training started")
+    episode_rewards = []
 
     for ep in range(episodes):
-        # Split key for episode reset
         key, env_key = jax.random.split(key)
         state = env.reset(rng=env_key)
-
         obs = state.obs
-        ep_reward = 0
-
+        ep_reward = 0.0
         for step in range(max_steps):
-            print(f'\rEpisode {ep+1}, Step {step+1}', end='')
-
             key, action_key = jax.random.split(key)
-            action = select_action_jit(actor_state.params, obs, action_key)
+            action = select_action(actor_state.params, obs, action_key)
+            new_state = jit_env_step(state, action)
+            obs = state.obs
+            reward = new_state.reward
+            done = new_state.done
+            next_obs = new_state.obs
+            replay_buffer = replay_buffer.push(
+                state=obs,
+                action=action,
+                reward=reward,
+                next_state=next_obs,
+                done=done
+            )
 
-            state = env.step(state, action)
-            next_obs = state.obs
-            reward = state.reward
-            done = state.done
-
-            replay_buffer.push(np.array(obs), np.array(action), float(reward),
-                               np.array(next_obs), float(done))
-
-            obs = next_obs
-            ep_reward += reward
-
-            if len(replay_buffer) >= batch_size:
-                s, a, r, ns, d = replay_buffer.sample(batch_size)
-
-                critic_state = update_critic(critic_state, target_critic_params,
-                                             target_actor_params, actor_state, s, a, r, ns, d, gamma)
-                actor_state = update_actor(actor_state, critic_state, s)
-
-                target_actor_params = soft_update(target_actor_params, actor_state.params, tau)
-                target_critic_params = soft_update(target_critic_params, critic_state.params, tau)
+            state = new_state
+            ep_reward += float(reward)
+            if replay_buffer.size >= batch_size:
+                actor_state, critic_state, target_actor_params, target_critic_params, key = train_step(
+                    actor_state, critic_state, target_actor_params, target_critic_params, replay_buffer, key
+                )
 
             if done:
                 break
@@ -113,4 +124,5 @@ def train_ddpg(actor, critic, env, episodes=100, max_steps=1000, batch_size=64,
         episode_rewards.append(ep_reward)
         print(f'\nEpisode {ep+1}, Reward: {ep_reward:.2f}, Steps: {step+1}')
 
+    print("Training complete.")
     return actor_state.params, critic_state.params, episode_rewards

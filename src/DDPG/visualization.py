@@ -4,6 +4,7 @@ from brax.io import html
 
 
 def visualize_policy(actor, params, env, episodes=1, max_steps=100):
+    jit_env_step = jax.jit(env.step)
 
     for ep in range(episodes):
         state = env.reset(rng=jax.random.PRNGKey(ep))
@@ -13,7 +14,7 @@ def visualize_policy(actor, params, env, episodes=1, max_steps=100):
             obs = np.array(state.obs)
             action = np.array(actor.apply(params, obs))
             rollout.append(state)
-            state = env.step(state, action)
+            state = jit_env_step(state, action)
             if state.done:
                 break
 

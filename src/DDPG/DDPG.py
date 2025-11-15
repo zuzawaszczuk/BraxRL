@@ -6,16 +6,15 @@ from plots import create_plot
 from brax.envs import create
 
 params = {
-    "env_name": "ant",
-    "episodes": 100,
+    "env_name": "inverted_pendulum",
     "max_steps": 1000,
-    "batch_size": 32,
+    "batch_size": 8,
     "save_path": "ddpg_model.pkl",
-    "learning_rate": 1e-3,
-    "gamma": 0.99,
-    "tau": 0.005,
-    "train_episode": 100,
-    "buffer_capacity": 80,
+    "learning_rate": 1e-2,
+    "gamma": 0.95,
+    "tau": 0.05,
+    "train_episodes": 400,
+    "buffer_capacity": 100,
 }
 
 
@@ -36,8 +35,8 @@ critic = Critic()
 actor_params, critic_params, episode_rewards = train_ddpg(
     actor,
     critic,
-    env,
-    episodes=params["train_episode"],
+    env_name=params["env_name"],
+    episodes=params["train_episodes"],
     max_steps=params["max_steps"],
     batch_size=params["batch_size"],
     learning_rate=params["learning_rate"],
@@ -46,5 +45,4 @@ actor_params, critic_params, episode_rewards = train_ddpg(
     buffer_capacity=params["buffer_capacity"],
 )
 create_plot(episode_rewards)
-save_model((actor_params, critic_params), params["save_path"])
-visualize_policy(actor, actor_params, env, episodes=2, max_steps=500)
+visualize_policy(actor, actor_params, env, episodes=4, max_steps=500)
