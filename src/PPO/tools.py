@@ -64,18 +64,3 @@ def entropy_bonus(policy: jax.Array, epsilon: float = 1e-8, axis = -1) -> float:
     policy = jnp.clip(policy, epsilon, 1.0)
     return -jnp.sum(policy * jnp.log(policy), axis = axis)
 
-
-
-if __name__ == '__main__':
-
-    enviroment = 'ant'
-    key = jax.random.PRNGKey(seed = 42)
-
-    agent = create(enviroment)
-    action = jax.random.normal(key = key, shape = (8,))
-    init_state = agent.reset(rng = key)
-    new_state = agent.step(init_state, action)
-    terminal_state, reward = new_state.done, new_state.reward
-
-    print(terminal_state, reward)
-

@@ -16,13 +16,3 @@ class Actor(nn.Module):
         policy = nn.tanh(policy)
         policy = nn.Dense(self.action_dim)(policy)
         return policy
-
-
-
-
-# critic = Actor(observation_dim = 120, hidden_dim = 64, action_dim=4)
-# x = np.random.uniform(low = 0, high = 12, size = (4, 4))
-# key = jax.random.key(0)
-# params = critic.init(key, x)
-# y = critic.apply(params, x)
-# print(y)
