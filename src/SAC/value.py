@@ -1,6 +1,7 @@
 from flax import linen as nn
 import jax.numpy as jnp
 
+
 class ValueNetwork(nn.Module):
     fc1_dims: int
     fc2_dims: int
