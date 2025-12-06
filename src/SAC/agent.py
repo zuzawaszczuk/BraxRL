@@ -85,87 +85,56 @@ example_second = {
     "next_state": jnp.zeros((10,)),
     "done": jnp.array(False),
 }
+
 # buffer_state = buffer.init(example_timestep)
-
-# print(buffer_state)
-
 # buffer_state = buffer.add(buffer_state, example_second)
-
-# rng = jax.random.PRNGKey(42)
 # batch = buffer.sample(buffer_state, rng)
 
-# print(buffer_state)
 
-# critic = CriticNetwork(
-#     # input_dims=20,
-#     # n_actions=5,
-#     fc1_dims=256,
-#     fc2_dims=256,
-#     # checkpoint_dir = "checkpoint",
-#     # name= "critic1"
-# )
+# def init_train_states(
+#     env: envs.Env,
+#     learning_rate: float = 3e-4,
+#     rng: PRNGKeyArray = jax.random.PRNGKey(0),
+# ) -> TrainStates:
+#     rng, *keys = jax.random.split(rng, 6)
+#     actor_key, critic1_key, critic2_key, value_key, target_value_key = keys
 
+#     actor = ActorNetwork(env.observation_size, env.action_size)
+#     critic1 = CriticNetwork(env.observation_size, env.action_size)
+#     critic2 = CriticNetwork(env.observation_size, env.action_size)
+#     value = ValueNetwork(env.observation_size)
+#     target_value = ValueNetwork(env.observation_size)
 
-# print(critic)
+#     dummy_obs = jnp.zeros((1, env.observation_size))
+#     dummy_action = jnp.zeros((1, env.action_size))
 
-# rng = jax.random.PRNGKey(0)
+#     actor_params = actor.init(actor_key, dummy_obs)
+#     critic1_params = critic1.init(critic1_key, dummy_obs, dummy_action)
+#     critic2_params = critic2.init(critic2_key, dummy_obs, dummy_action)
+#     value_params = value.init(value_key, dummy_obs)
+#     target_value_params = target_value.init(target_value_key, dummy_obs)
 
+#     actor_state = train_state.TrainState.create(
+#         apply_fn=actor.apply, params=actor_params, tx=optax.adam(learning_rate)
+#     )
+#     critic1_state = train_state.TrainState.create(
+#         apply_fn=critic1.apply, params=critic1_params, tx=optax.adam(learning_rate)
+#     )
+#     critic2_state = train_state.TrainState.create(
+#         apply_fn=critic2.apply, params=critic2_params, tx=optax.adam(learning_rate)
+#     )
+#     value_state = train_state.TrainState.create(
+#         apply_fn=value.apply, params=value_params, tx=optax.adam(learning_rate)
+#     )
+#     target_value_state = train_state.TrainState.create(
+#         apply_fn=target_value.apply,
+#         params=target_value_params,
+#         tx=optax.adam(learning_rate),
+#     )
 
-def create_train_state(self, rng):
-    params = self.init(
-        rng, jnp.zeros((1, self.input_dims)), jnp.zeros((1, self.n_actions))
-    )
-    optimizer = optax.adam(self.lr)
-
-    return train_state.TrainState.create(
-        apply_fn=self.apply, params=params, tx=optimizer
-    )
-
-
-def init_train_states(
-    env: envs.Env,
-    learning_rate: float = 3e-4,
-    rng: PRNGKeyArray = jax.random.PRNGKey(0),
-) -> TrainStates:
-    rng, *keys = jax.random.split(rng, 6)
-    actor_key, critic1_key, critic2_key, value_key, target_value_key = keys
-
-    actor = ActorNetwork(env.observation_size, env.action_size)
-    critic1 = CriticNetwork(env.observation_size, env.action_size)
-    critic2 = CriticNetwork(env.observation_size, env.action_size)
-    value = ValueNetwork(env.observation_size)
-    target_value = ValueNetwork(env.observation_size)
-
-    dummy_obs = jnp.zeros((1, env.observation_size))
-    dummy_action = jnp.zeros((1, env.action_size))
-
-    actor_params = actor.init(actor_key, dummy_obs)
-    critic1_params = critic1.init(critic1_key, dummy_obs, dummy_action)
-    critic2_params = critic2.init(critic2_key, dummy_obs, dummy_action)
-    value_params = value.init(value_key, dummy_obs)
-    target_value_params = target_value.init(target_value_key, dummy_obs)
-
-    actor_state = train_state.TrainState.create(
-        apply_fn=actor.apply, params=actor_params, tx=optax.adam(learning_rate)
-    )
-    critic1_state = train_state.TrainState.create(
-        apply_fn=critic1.apply, params=critic1_params, tx=optax.adam(learning_rate)
-    )
-    critic2_state = train_state.TrainState.create(
-        apply_fn=critic2.apply, params=critic2_params, tx=optax.adam(learning_rate)
-    )
-    value_state = train_state.TrainState.create(
-        apply_fn=value.apply, params=value_params, tx=optax.adam(learning_rate)
-    )
-    target_value_state = train_state.TrainState.create(
-        apply_fn=target_value.apply,
-        params=target_value_params,
-        tx=optax.adam(learning_rate),
-    )
-
-    return TrainStates(
-        actor_state, critic1_state, critic2_state, value_state, target_value_state
-    )
+#     return TrainStates(
+#         actor_state, critic1_state, critic2_state, value_state, target_value_state
+#     )
 
 
 def save_checkpoints(train_states: TrainStates, step: int, checkpoint_dir: str):
