@@ -1,13 +1,14 @@
+import argparse
 import functools
+import os
 from datetime import datetime
+
 from brax import envs
 from brax.io import model
 from brax.training.agents.ppo.train import train as ppo_train
 
 # from brax.training.agents.sac.train import train as sac_train
 from plots import make_plot
-import argparse
-import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--env_name", type=str, default="ant")

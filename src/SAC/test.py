@@ -1,7 +1,7 @@
-from critic import CriticNetwork
 import jax
 import jax.numpy as jnp
 import optax
+from critic import CriticNetwork
 from flax.training import train_state
 
 critic = CriticNetwork(

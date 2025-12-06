@@ -1,10 +1,10 @@
-from brax.training.agents.ppo.checkpoint import load_policy
-from brax import envs
-import jax
-from brax.io import html
 import argparse
 import os
 
+import jax
+from brax import envs
+from brax.io import html
+from brax.training.agents.ppo.checkpoint import load_policy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--env_name", type=str, default="ant")

@@ -1,14 +1,15 @@
+import argparse
 import functools
+import os
 from datetime import datetime
+
+import jax
 from brax import envs
-from brax.io import model, html
+from brax.io import html, model
 from brax.training.agents.ppo.train import train as ppo_train
 
 # from brax.training.agents.sac.train import train as sac_train
 from plots import make_plot
-import argparse
-import os
-import jax
 
 # ml_collections.ConfigDict.to_json = ml_collections.ConfigDict.to_json_best_effort
 
