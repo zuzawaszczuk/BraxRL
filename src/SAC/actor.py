@@ -1,11 +1,11 @@
-from typing import Callable, Tuple
+from typing import Tuple
 
 import distrax
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
-from flax.core.frozen_dict import FrozenDict
-from jaxtyping import Array, Float, PRNGKeyArray
+from flax.training.train_state import TrainState
+from jaxtyping import Array, PRNGKeyArray
 
 
 class ActorNetwork(nn.Module):
@@ -33,16 +33,15 @@ class ActorNetwork(nn.Module):
 
 
 def sample_normal(
-    apply: Callable[[FrozenDict, Array], tuple[Array, Array]],
-    model_params: FrozenDict,
+    actor: TrainState,
     state: Array,
     max_action: int,
-    reparam_noise: float,
     key: PRNGKeyArray,
     reparameterize: bool = True,
+    reparam_noise: float = 1e-6,
 ) -> Tuple[Array, Array]:
 
-    mu, sigma = apply(model_params, state)
+    mu, sigma = actor.apply_fn(actor, state)
     dist = distrax.Normal(loc=mu, scale=sigma)
 
     if reparameterize:

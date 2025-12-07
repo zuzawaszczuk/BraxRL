@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from flax import linen as nn
-from jaxtyping import Array, Float
+from jaxtyping import Array
 
 
 class ValueNetwork(nn.Module):
