@@ -9,16 +9,13 @@ import optax
 from actor import ActorNetwork, sample_normal
 from brax import envs
 from critic import CriticNetwork
-from flashbax.buffers.trajectory_buffer import (
-    Experience,
-    TrajectoryBuffer,
-    TrajectoryBufferState,
-)
-from flax.training.train_state import TrainState
+from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
+                                                TrajectoryBufferState)
 from flax.training import checkpoints
+from flax.training.train_state import TrainState
 from jaxtyping import Array, PRNGKeyArray
-from value import ValueNetwork
 from training import learn
+from value import ValueNetwork
 
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
 

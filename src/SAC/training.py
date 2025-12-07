@@ -4,12 +4,9 @@ from typing import Tuple, TypeAlias
 import jax
 import jax.numpy as jnp
 from actor import sample_normal
-from flashbax.buffers.trajectory_buffer import (
-    Experience,
-    TrajectoryBuffer,
-    TrajectoryBufferSample,
-    TrajectoryBufferState,
-)
+from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
+                                                TrajectoryBufferSample,
+                                                TrajectoryBufferState)
 from flax.training.train_state import TrainState
 from jaxtyping import PRNGKeyArray
 
@@ -56,7 +53,7 @@ def learn(
 
 
 def update_value_network(
-    params: TrainState,
+    params: TrainStates,
     batch: TrajectoryBufferSample[Experience],
     max_action: float,
     key: PRNGKeyArray,
@@ -79,7 +76,7 @@ def update_value_network(
         return loss
 
     grads = jax.grad(value_loss_fn)(params.value)
-    new_value = params.value.apply_gradients(grads)
+    new_value = params.value.apply_gradients(grads=grads)
 
     return new_value
 
@@ -96,7 +93,7 @@ def soft_update_target_value_network(
 
 
 def update_actor_network(
-    params: TrainState,
+    params: TrainStates,
     batch: TrajectoryBufferSample[Experience],
     max_action: float,
     key: PRNGKeyArray,
@@ -116,13 +113,13 @@ def update_actor_network(
         return loss
 
     grads = jax.grad(actor_loss_fn)(params.actor.params)
-    new_actor = params.actor.apply_gradients(grads)
+    new_actor = params.actor.apply_gradients(grads=grads)
 
     return new_actor
 
 
 def update_critic_networks(
-    params: TrainState,
+    params: TrainStates,
     batch: TrajectoryBufferSample[Experience],
     reward_scaling: float = 30,
     gamma: float = 0.99,
