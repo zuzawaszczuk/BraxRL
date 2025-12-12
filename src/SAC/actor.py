@@ -40,8 +40,12 @@ def sample_normal(
     reparameterize: bool = True,
     reparam_noise: float = 1e-6,
 ) -> Tuple[Array, Array]:
+    if state.ndim == 1:
+        state = state[None, :]
+    print(f"state n {state.shape}")
 
-    mu, sigma = actor.apply_fn(actor, state)
+    mu, sigma = actor.apply_fn(actor.params, state)
+    print(f"mu n {mu.shape} sigme n {sigma.shape}")
     dist = distrax.Normal(loc=mu, scale=sigma)
 
     if reparameterize:
@@ -49,10 +53,17 @@ def sample_normal(
     else:
         actions = jax.lax.stop_gradient(dist.sample(seed=key))
 
+    print(f"actions n {actions}")
+
     action = jax.lax.tanh(actions) * max_action
+
+    print(f"actions n {action}")
 
     log_probs = dist.log_prob(actions)
     log_probs -= jnp.log(1 - jnp.square(action) + reparam_noise)
-    log_probs = log_probs.sum(1, keepdim=True)
+    print(f"actions log_probs {log_probs.shape}")
+    log_probs = jnp.sum(log_probs, axis=1, keepdims=True)
+
+    print(f"actions log_probs {log_probs}")
 
     return action, log_probs

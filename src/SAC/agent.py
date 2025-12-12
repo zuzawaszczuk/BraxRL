@@ -30,6 +30,8 @@ class TrainStates:
 
 
 def sac_train(
+    env,
+    progress_fn,
     num_timesteps=6_553_600,
     num_evals=20,
     reward_scaling=30,  #
@@ -45,7 +47,7 @@ def sac_train(
     max_replay_size=1048576,  #
     min_replay_size=8192,
     seed=1,
-    save_checkpoint_path="reports/checkpoints/ant",
+    save_checkpoint_path="reports/checkpoints/ant"
 ):
     buffer = fbx.make_flat_buffer(
         max_length=max_replay_size,
@@ -53,15 +55,33 @@ def sac_train(
         sample_batch_size=batch_size,
     )
 
-    env = envs.create("ant")
     max_action = 1
-    key = jax.random.PRNGKey(seed)
+    rng = jax.random.PRNGKey(seed)
 
     buffer_state = init_buffer(buffer)
     train_states = init_train_states(env, learning_rate)
 
-    print("sukces")
-    learn(buffer, buffer_state, train_states, max_action, key)
+    time_steps = 0
+    
+    while time_steps < num_timesteps:
+        rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
+        observation = env.reset(rng1)
+        done = False
+        score = 0
+        episode_steps = 0
+
+        while not done and episode_steps < episode_length:
+            action = choose_action(train_states.actor, observation.obs, max_action, rng2)
+            print(f'action {action}')
+            observation_, reward, done, info = env.step(action)
+            score += reward
+            buffer.add(buffer_state, (observation, reward, done, info))
+            train_states = learn(buffer, buffer_state, train_states, max_action, rng3)
+
+            episode_steps += 1
+            time_steps += 1
+
+        print(f"Timestep score: {score}")
 
 
 def choose_action(
@@ -72,7 +92,7 @@ def choose_action(
     reparam_noise: float = 1e-6,
 ):
     actions, _ = sample_normal(
-        actor, state, max_action, key, reparam_noise, reparameterize=False
+        actor, state, max_action, key, False, reparam_noise
     )
 
     return jnp.squeeze(actions, axis=0)
