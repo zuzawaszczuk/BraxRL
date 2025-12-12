@@ -40,8 +40,7 @@ def learn(
     batch = buffer.sample(buffer_state, buffer_key)
 
     new_value = update_value_network(params, batch, max_action, actor_key1)
-    new_target_value = soft_update_target_value_network(
-        params.target_value, new_value)
+    new_target_value = soft_update_target_value_network(params.target_value, new_value)
     new_actor = update_actor_network(params, batch, max_action, actor_key2)
     new_critic1, new_critic2 = update_critic_networks(
         params, batch, reward_scaling, discounting

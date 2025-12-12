@@ -51,7 +51,7 @@ def sample_normal(
         reparameterize,
         lambda _: dist.sample(seed=key),
         lambda _: jax.lax.stop_gradient(dist.sample(seed=key)),
-        operand=None
+        operand=None,
     )
 
     action = jax.lax.tanh(actions) * max_action
