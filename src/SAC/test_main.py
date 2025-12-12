@@ -12,4 +12,5 @@ def progress(num_steps, metrics):
     print("Num steps: {} metrics: {}".format(num_steps, metrics["eval/episode_reward"]))
 
 env = envs.get_environment(env_name="ant", backend="positional")
+print(env.observation_size)
 sac_train(env, progress)

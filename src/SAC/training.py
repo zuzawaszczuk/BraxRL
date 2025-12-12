@@ -28,7 +28,6 @@ def learn(
     params: TrainStates,
     max_action: float,
     key: PRNGKeyArray,
-    tau: float = 0.05,
     reward_scaling=30,
     discounting=0.997,
 ) -> TrainStates | None:
@@ -42,16 +41,17 @@ def learn(
 
     new_value = update_value_network(params, batch, max_action, actor_key1)
     new_target_value = soft_update_target_value_network(
-        params.target_value, new_value, tau
-    )
+        params.target_value, new_value)
     new_actor = update_actor_network(params, batch, max_action, actor_key2)
     new_critic1, new_critic2 = update_critic_networks(
         params, batch, reward_scaling, discounting
     )
+    print(f" actor {new_actor} critic1 {new_critic1} ")
 
     return TrainStates(new_actor, new_critic1, new_critic2, new_value, new_target_value)
 
 
+@jax.jit
 def update_value_network(
     params: TrainStates,
     batch: TrajectoryBufferSample[Experience],
@@ -81,6 +81,7 @@ def update_value_network(
     return new_value
 
 
+@jax.jit
 def soft_update_target_value_network(
     target_value: TrainState, new_value: TrainState, tau: float = 0.05
 ) -> TrainState:
@@ -92,6 +93,7 @@ def soft_update_target_value_network(
     return target_value.replace(params=new_target_value_params)
 
 
+@jax.jit
 def update_actor_network(
     params: TrainStates,
     batch: TrajectoryBufferSample[Experience],
@@ -118,6 +120,7 @@ def update_actor_network(
     return new_actor
 
 
+@jax.jit
 def update_critic_networks(
     params: TrainStates,
     batch: TrajectoryBufferSample[Experience],

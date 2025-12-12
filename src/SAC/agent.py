@@ -16,6 +16,7 @@ from flax.training.train_state import TrainState
 from jaxtyping import Array, PRNGKeyArray
 from training import learn
 from value import ValueNetwork
+from brax.envs.base import State as EnvState
 
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
 
@@ -57,9 +58,8 @@ def sac_train(
 
     max_action = 1
     rng = jax.random.PRNGKey(seed)
-
-    buffer_state = init_buffer(buffer)
-    train_states = init_train_states(env, learning_rate)
+    buffer_state = init_buffer(buffer, env.action_size, env.observation_size)
+    params = init_train_states(env, learning_rate)
 
     time_steps = 0
     
@@ -71,12 +71,17 @@ def sac_train(
         episode_steps = 0
 
         while not done and episode_steps < episode_length:
-            action = choose_action(train_states.actor, observation.obs, max_action, rng2)
-            print(f'action {action}')
-            observation_, reward, done, info = env.step(action)
-            score += reward
-            buffer.add(buffer_state, (observation, reward, done, info))
-            train_states = learn(buffer, buffer_state, train_states, max_action, rng3)
+            action = choose_action(params.actor, observation.obs, max_action, rng2)
+            if time_steps % 10 == 0:
+                print(f'ep {episode_steps} time {time_steps} score {score}')
+            observation_ = env.step(observation, action)
+            score += observation_.reward
+
+            remember = create_buffer_state(observation, observation_, action)
+            buffer_state = buffer.add(buffer_state, remember)
+            new_params = learn(buffer, buffer_state, params, max_action, rng3, reward_scaling, discounting)
+            if new_params:
+                params = new_params
 
             episode_steps += 1
             time_steps += 1
@@ -90,7 +95,7 @@ def choose_action(
     max_action: float,
     key: PRNGKeyArray,
     reparam_noise: float = 1e-6,
-):
+) -> Array:
     actions, _ = sample_normal(
         actor, state, max_action, key, False, reparam_noise
     )
@@ -98,16 +103,24 @@ def choose_action(
     return jnp.squeeze(actions, axis=0)
 
 
-def init_buffer(buffer: TrajectoryBuffer) -> BufferState:
+def init_buffer(buffer: TrajectoryBuffer, action_size: int, obs_size: int) -> BufferState:
     example_timestep = {
-        "state": jnp.zeros((10,)),
-        "action": jnp.zeros((5,)),
+        "state": jnp.zeros((obs_size,)),
+        "action": jnp.zeros((action_size,)),
         "reward": jnp.array(0.0),
-        "next_state": jnp.zeros((10,)),
+        "next_state": jnp.zeros((obs_size,)),
         "done": jnp.array(False),
     }
     return buffer.init(example_timestep)
 
+def create_buffer_state(observation: EnvState, observation_: EnvState, action: Array) -> BufferState:
+    return {
+        "state": observation.obs,
+        "action": action,
+        "reward": observation_.reward,
+        "next_state": observation_.obs,
+        "done": jnp.asarray(observation_.done, dtype=jnp.bool_),
+    }
 
 def init_train_states(
     env: envs.Env,
