@@ -35,6 +35,7 @@ class ActorNetwork(nn.Module):
 @jax.jit
 def sample_normal(
     actor: TrainState,
+    actor_params: Array,
     state: Array,
     max_action: int,
     key: PRNGKeyArray,
@@ -44,7 +45,7 @@ def sample_normal(
     if state.ndim == 1:
         state = state[None, :]
 
-    mu, sigma = actor.apply_fn(actor.params, state)
+    mu, sigma = actor.apply_fn(actor_params, state)
     dist = distrax.Normal(loc=mu, scale=sigma)
 
     actions = jax.lax.cond(

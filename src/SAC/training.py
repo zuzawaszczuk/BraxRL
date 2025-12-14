@@ -37,7 +37,7 @@ def learn(
 
         new_value = update_value_network(params, batch, max_action, actor_key1)
         new_target_value = soft_update_target_value_network(
-            params.target_value, new_value
+            params["target_value"], new_value
         )
         new_actor = update_actor_network(params, batch, max_action, actor_key2)
         new_critic1, new_critic2 = update_critic_networks(
@@ -62,12 +62,13 @@ def update_value_network(
     max_action: float,
     key: PRNGKeyArray,
 ) -> TrainState:
+    batch_state = batch.experience.first["state"]
     actions, log_probs = sample_normal(
-        params["actor"], batch["state"], max_action, key, False
+        params["actor"], params["actor"].params, batch_state, max_action, key, False
     )
 
-    q1_new_policy = params["critic1"].apply_fn(params["critic1"], batch["state"], actions)
-    q2_new_policy = params["critic2"].apply_fn(params["critic2"], batch["state"], actions)
+    q1_new_policy = params["critic1"].apply_fn(params["critic1"].params, batch_state, actions)
+    q2_new_policy = params["critic2"].apply_fn(params["critic2"].params, batch_state, actions)
 
     critic_value = jnp.minimum(q1_new_policy, q2_new_policy)
     # y = min(Q1, Q2) - log π(a|s)
@@ -75,11 +76,11 @@ def update_value_network(
 
     # L_v = 1/2 * mean( (V(s) - y)^2
     def value_loss_fn(value_params):
-        v = value_params.apply_fn(value_params.params, batch["state"])
+        v = params["value"].apply_fn(value_params, batch_state)
         loss = 0.5 * jnp.mean((v - value_target) ** 2)
         return loss
 
-    grads = jax.grad(value_loss_fn)(params["value"])
+    grads = jax.grad(value_loss_fn)(params["value"].params)
     new_value = params["value"].apply_gradients(grads=grads)
 
     return new_value
@@ -104,14 +105,15 @@ def update_actor_network(
     max_action: float,
     key: PRNGKeyArray,
 ) -> TrainState:
+    batch_state = batch.experience.first["state"]
 
     def actor_loss_fn(actor_params):
         actions, log_probs = sample_normal(
-            actor_params, batch["state"], max_action, key, reparameterize=True
+            params["actor"], actor_params, batch_state, max_action, key, reparameterize=True
         )
 
-        q1 = params["critic1"].apply_fn(params["critic1"].params, batch["state"], actions)
-        q2 = params["critic2"].apply_fn(params["critic2"].params, batch["state"], actions)
+        q1 = params["critic1"].apply_fn(params["critic1"].params, batch_state, actions)
+        q2 = params["critic2"].apply_fn(params["critic2"].params, batch_state, actions)
         q_min = jnp.minimum(q1, q2)
 
         # L_actor = α log π(a|s) - Q(s,a), α=1 for simplicity
@@ -131,11 +133,12 @@ def update_critic_networks(
     reward_scaling: float = 30,
     gamma: float = 0.99,
 ) -> Tuple[TrainState, TrainState]:
-    value_ = params.target_value.apply_fn(params.target_value.params, batch["state"])
+    batch = batch.experience.first
+    value_ = params["target_value"].apply_fn(params["target_value"].params, batch["state"])
     q_hat = reward_scaling * batch["reward"] + gamma * value_
 
     def critic1_loss_fn(critic1_params):
-        q1 = params.critic1_params.apply_fn(critic1_params, batch["state"], batch["action"])
+        q1 = params["critic1"].apply_fn(critic1_params, batch["state"], batch["action"])
         loss = 0.5 * jnp.mean((q1 - q_hat) ** 2)
         return loss
 
@@ -143,7 +146,7 @@ def update_critic_networks(
     new_critic1 = params["critic1"].apply_gradients(grads=grads1)
 
     def critic2_loss_fn(critic2_params):
-        q2 = params.critic2.apply_fn(critic2_params, batch["state"], batch["action"])
+        q2 = params["critic2"].apply_fn(critic2_params, batch["state"], batch["action"])
         loss = 0.5 * jnp.mean((q2 - q_hat) ** 2)
         return loss
 

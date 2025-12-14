@@ -27,7 +27,7 @@ BufferState: TypeAlias = TrajectoryBufferState[Experience]
 def sac_train(
     env: envs,
     progress_fn,
-    num_timesteps=6_553_600,
+    num_timesteps=150, #6_553_600,
     num_evals=20,
     reward_scaling=30,  #
     episode_length=1000,
@@ -69,7 +69,7 @@ def sac_train(
         score = 0
         episode_steps = 0
 
-        while not done and episode_steps < episode_length:
+        while not done and episode_steps < episode_length and time_steps < num_timesteps:
             rng, rng_action = jax.random.split(rng)
             action = choose_action(
                 params["actor"], observation.obs, max_action, rng_action
@@ -77,9 +77,7 @@ def sac_train(
 
             observation_ = env.step(observation, action)
             score += observation_.reward
-            if time_steps % 10 == 0:
-                metrics = {"eval/episode_reward": score}
-                progress_fn(time_steps, metrics)
+            done = observation_.done
 
             remember = create_buffer_state(observation, observation_, action)
             buffer_state = buffer.add(buffer_state, remember)
@@ -89,11 +87,14 @@ def sac_train(
                 buffer_state,
                 params,
                 max_action,
-                rng,
+                rng_learn,
                 reward_scaling,
                 discounting,
                 grad_updates_per_step,
             )
+            if time_steps % 10 == 0:
+                metrics = {"eval/episode_reward": score}
+                progress_fn(time_steps, metrics)
             episode_steps += 1
             time_steps += 1
 
@@ -107,7 +108,7 @@ def choose_action(
     key: PRNGKeyArray,
     reparam_noise: float = 1e-6,
 ) -> Array:
-    actions, _ = sample_normal(actor, state, max_action, key, False, reparam_noise)
+    actions, _ = sample_normal(actor, actor.params, state, max_action, key, False, reparam_noise)
 
     return jnp.squeeze(actions, axis=0)
 
