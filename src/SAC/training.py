@@ -1,25 +1,19 @@
 from dataclasses import dataclass
-from typing import Tuple, TypeAlias
+from typing import Tuple, TypeAlias, Dict
 
 import jax
 import jax.numpy as jnp
-from actor import sample_normal
 from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
                                                 TrajectoryBufferSample,
                                                 TrajectoryBufferState)
 from flax.training.train_state import TrainState
+from jax.lax import scan
 from jaxtyping import PRNGKeyArray
 
+from actor import sample_normal
+
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
-
-
-@dataclass
-class TrainStates:
-    actor: TrainState
-    critic1: TrainState
-    critic2: TrainState
-    value: TrainState
-    target_value: TrainState
+TrainStates = Dict[str, TrainState]
 
 
 def learn(
@@ -30,24 +24,35 @@ def learn(
     key: PRNGKeyArray,
     reward_scaling=30,
     discounting=0.997,
-) -> TrainStates | None:
+    grad_steps=64,
+) -> tuple[TrainStates, PRNGKeyArray]:
     if not buffer.can_sample(buffer_state):
-        return None
+        return params, key
 
-    key, *keys = jax.random.split(key, 3)
-    buffer_key, actor_key1, actor_key2 = keys
+    def one_grad_step(carry, _):
+        key, params = carry
 
-    batch = buffer.sample(buffer_state, buffer_key)
+        key, buffer_key, actor_key1, actor_key2 = jax.random.split(key, 4)
+        batch = buffer.sample(buffer_state, buffer_key)
 
-    new_value = update_value_network(params, batch, max_action, actor_key1)
-    new_target_value = soft_update_target_value_network(params.target_value, new_value)
-    new_actor = update_actor_network(params, batch, max_action, actor_key2)
-    new_critic1, new_critic2 = update_critic_networks(
-        params, batch, reward_scaling, discounting
-    )
-    print(f" actor {new_actor} critic1 {new_critic1} ")
+        new_value = update_value_network(params, batch, max_action, actor_key1)
+        new_target_value = soft_update_target_value_network(
+            params.target_value, new_value
+        )
+        new_actor = update_actor_network(params, batch, max_action, actor_key2)
+        new_critic1, new_critic2 = update_critic_networks(
+            params, batch, reward_scaling, discounting
+        )
+        return (
+            key,
+            create_train_states(
+                new_actor, new_critic1, new_critic2, new_value, new_target_value
+            ),
+        ), None
 
-    return TrainStates(new_actor, new_critic1, new_critic2, new_value, new_target_value)
+    (key, params), _ = scan(one_grad_step, (key, params), None, length=grad_steps)
+
+    return params, key
 
 
 @jax.jit
@@ -58,11 +63,11 @@ def update_value_network(
     key: PRNGKeyArray,
 ) -> TrainState:
     actions, log_probs = sample_normal(
-        params.actor, batch["state"], max_action, key, False
+        params["actor"], batch["state"], max_action, key, False
     )
 
-    q1_new_policy = params.critic1.apply_fn(params.critic1, batch["state"], actions)
-    q2_new_policy = params.critic2.apply_fn(params.critic2, batch["state"], actions)
+    q1_new_policy = params["critic1"].apply_fn(params["critic1"], batch["state"], actions)
+    q2_new_policy = params["critic2"].apply_fn(params["critic2"], batch["state"], actions)
 
     critic_value = jnp.minimum(q1_new_policy, q2_new_policy)
     # y = min(Q1, Q2) - log π(a|s)
@@ -74,8 +79,8 @@ def update_value_network(
         loss = 0.5 * jnp.mean((v - value_target) ** 2)
         return loss
 
-    grads = jax.grad(value_loss_fn)(params.value)
-    new_value = params.value.apply_gradients(grads=grads)
+    grads = jax.grad(value_loss_fn)(params["value"])
+    new_value = params["value"].apply_gradients(grads=grads)
 
     return new_value
 
@@ -105,16 +110,16 @@ def update_actor_network(
             actor_params, batch["state"], max_action, key, reparameterize=True
         )
 
-        q1 = params.critic1.apply_fn(params.critic1.params, batch["state"], actions)
-        q2 = params.critic2.apply_fn(params.critic2.params, batch["state"], actions)
+        q1 = params["critic1"].apply_fn(params["critic1"].params, batch["state"], actions)
+        q2 = params["critic2"].apply_fn(params["critic2"].params, batch["state"], actions)
         q_min = jnp.minimum(q1, q2)
 
         # L_actor = α log π(a|s) - Q(s,a), α=1 for simplicity
         loss = jnp.mean(log_probs - q_min)
         return loss
 
-    grads = jax.grad(actor_loss_fn)(params.actor.params)
-    new_actor = params.actor.apply_gradients(grads=grads)
+    grads = jax.grad(actor_loss_fn)(params["actor"].params)
+    new_actor = params["actor"].apply_gradients(grads=grads)
 
     return new_actor
 
@@ -130,19 +135,35 @@ def update_critic_networks(
     q_hat = reward_scaling * batch["reward"] + gamma * value_
 
     def critic1_loss_fn(critic1_params):
-        q1 = params.critic1.apply_fn(critic1_params, batch["state"], batch["action"])
+        q1 = params.critic1_params.apply_fn(critic1_params, batch["state"], batch["action"])
         loss = 0.5 * jnp.mean((q1 - q_hat) ** 2)
         return loss
 
-    grads1 = jax.grad(critic1_loss_fn)(params.critic1.params)
-    new_critic1 = params.critic1.apply_gradients(grads=grads1)
+    grads1 = jax.grad(critic1_loss_fn)(params["critic1"].params)
+    new_critic1 = params["critic1"].apply_gradients(grads=grads1)
 
     def critic2_loss_fn(critic2_params):
         q2 = params.critic2.apply_fn(critic2_params, batch["state"], batch["action"])
         loss = 0.5 * jnp.mean((q2 - q_hat) ** 2)
         return loss
 
-    grads2 = jax.grad(critic2_loss_fn)(params.critic2.params)
-    new_critic2 = params.critic2.apply_gradients(grads=grads2)
+    grads2 = jax.grad(critic2_loss_fn)(params["critic2"].params)
+    new_critic2 = params["critic2"].apply_gradients(grads=grads2)
 
     return new_critic1, new_critic2
+
+
+def create_train_states(
+    actor_state: TrainState,
+    critic1_state: TrainState,
+    critic2_state: TrainState,
+    value_state: TrainState,
+    target_value_state: TrainState
+) -> TrainStates:
+    return {
+        "actor": actor_state,
+        "critic1": critic1_state,
+        "critic2": critic2_state,
+        "value": value_state,
+        "target_value": target_value_state
+    }

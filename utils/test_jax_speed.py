@@ -1,6 +1,5 @@
 import timeit
 import numpy as np
-import jax
 import jax.numpy as jnp
 from jax import random, device_put
 

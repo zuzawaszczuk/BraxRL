@@ -6,32 +6,26 @@ import flashbax as fbx
 import jax
 import jax.numpy as jnp
 import optax
-from actor import ActorNetwork, sample_normal
 from brax import envs
 from brax.envs.base import State as EnvState
-from critic import CriticNetwork
 from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
                                                 TrajectoryBufferState)
 from flax.training import checkpoints
 from flax.training.train_state import TrainState
+from jax import jit
+from jax.lax import scan
 from jaxtyping import Array, PRNGKeyArray
-from training import learn
+
+from actor import ActorNetwork, sample_normal
+from critic import CriticNetwork
+from training import learn, create_train_states, TrainStates
 from value import ValueNetwork
 
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
 
 
-@dataclass
-class TrainStates:
-    actor: TrainState
-    critic1: TrainState
-    critic2: TrainState
-    value: TrainState
-    target_value: TrainState
-
-
 def sac_train(
-    env,
+    env: envs,
     progress_fn,
     num_timesteps=6_553_600,
     num_evals=20,
@@ -46,7 +40,7 @@ def sac_train(
     grad_updates_per_step=64,
     max_devices_per_host=1,
     max_replay_size=1048576,  #
-    min_replay_size=8192,
+    min_replay_size=100,  # 8192,
     seed=1,
     save_checkpoint_path="reports/checkpoints/ant",
 ):
@@ -61,36 +55,45 @@ def sac_train(
     buffer_state = init_buffer(buffer, env.action_size, env.observation_size)
     params = init_train_states(env, learning_rate)
 
-    time_steps = 0
+    buffer_state, rng = collect_start_samples(
+        buffer, buffer_state, env, params, max_action, min_replay_size, rng
+    )
+    print("collected")
+
+    time_steps = min_replay_size
 
     while time_steps < num_timesteps:
-        rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
+        rng, rng1 = jax.random.split(rng)
         observation = env.reset(rng1)
         done = False
         score = 0
         episode_steps = 0
 
         while not done and episode_steps < episode_length:
-            action = choose_action(params.actor, observation.obs, max_action, rng2)
-            if time_steps % 10 == 0:
-                print(f"ep {episode_steps} time {time_steps} score {score}")
+            rng, rng_action = jax.random.split(rng)
+            action = choose_action(
+                params["actor"], observation.obs, max_action, rng_action
+            )
+
             observation_ = env.step(observation, action)
             score += observation_.reward
+            if time_steps % 10 == 0:
+                metrics = {"eval/episode_reward": score}
+                progress_fn(time_steps, metrics)
 
             remember = create_buffer_state(observation, observation_, action)
             buffer_state = buffer.add(buffer_state, remember)
-            new_params = learn(
+            rng, rng_learn = jax.random.split(rng)
+            params, rng = learn(
                 buffer,
                 buffer_state,
                 params,
                 max_action,
-                rng3,
+                rng,
                 reward_scaling,
                 discounting,
+                grad_updates_per_step,
             )
-            if new_params:
-                params = new_params
-
             episode_steps += 1
             time_steps += 1
 
@@ -134,6 +137,33 @@ def create_buffer_state(
     }
 
 
+def collect_start_samples(
+    buffer: TrajectoryBuffer,
+    buffer_state: BufferState,
+    env: envs,
+    params: TrainStates,
+    max_action: int,
+    min_replay_size: int,
+    key: PRNGKeyArray,
+) -> tuple[BufferState, PRNGKeyArray]:
+    observation = env.reset(key)
+
+    def one_step(carry, _):
+        observation, buffer_state, key = carry
+        key, subkey = jax.random.split(key)
+        action = choose_action(params["actor"], observation.obs, max_action, subkey)
+        observation_ = env.step(observation, action)
+        remember = create_buffer_state(observation, observation_, action)
+        buffer_state = buffer.add(buffer_state, remember)
+        return (observation_, buffer_state, key), None
+
+    (_, buffer_state, key), _ = scan(
+        jit(one_step), (observation, buffer_state, key), None, length=min_replay_size
+    )
+
+    return buffer_state, key
+
+
 def init_train_states(
     env: envs.Env,
     learning_rate: float = 3e-4,
@@ -175,7 +205,7 @@ def init_train_states(
         tx=optax.adam(learning_rate),
     )
 
-    return TrainStates(
+    return create_train_states(
         actor_state, critic1_state, critic2_state, value_state, target_value_state
     )
 
@@ -183,20 +213,20 @@ def init_train_states(
 def save_checkpoints(train_states: TrainStates, step: int, checkpoint_dir: str):
     os.makedirs(checkpoint_dir, exist_ok=True)
     checkpoints.save_checkpoint(
-        checkpoint_dir, train_states.actor, step=step, prefix="actor_"
+        checkpoint_dir, train_states["actor"], step=step, prefix="actor_"
     )
     checkpoints.save_checkpoint(
-        checkpoint_dir, train_states.critic1, step=step, prefix="critic1_"
+        checkpoint_dir, train_states["critic1"], step=step, prefix="critic1_"
     )
     checkpoints.save_checkpoint(
-        checkpoint_dir, train_states.critic2, step=step, prefix="critic2_"
+        checkpoint_dir, train_states["critic2"], step=step, prefix="critic2_"
     )
     checkpoints.save_checkpoint(
-        checkpoint_dir, train_states.value, step=step, prefix="value_"
+        checkpoint_dir, train_states["value"], step=step, prefix="value_"
     )
     checkpoints.save_checkpoint(
         checkpoint_dir,
-        train_states.target_value,
+        train_states["target_value"],
         step=step,
         prefix="target_value_",
     )
@@ -204,19 +234,19 @@ def save_checkpoints(train_states: TrainStates, step: int, checkpoint_dir: str):
 
 def restore_checkpoints(train_states: TrainStates, checkpoint_dir: str) -> TrainStates:
     actor_state = checkpoints.restore_checkpoint(
-        checkpoint_dir, train_states.actor, prefix="actor"
+        checkpoint_dir, train_states["actor"], prefix="actor"
     )
     critic1_state = checkpoints.restore_checkpoint(
-        checkpoint_dir, train_states.critic1, prefix="critic1"
+        checkpoint_dir, train_states["critic1"], prefix="critic1"
     )
     critic2_state = checkpoints.restore_checkpoint(
-        checkpoint_dir, train_states.critic2, prefix="critic2"
+        checkpoint_dir, train_states["critic2"], prefix="critic2"
     )
     value_state = checkpoints.restore_checkpoint(
-        checkpoint_dir, train_states.value, prefix="value"
+        checkpoint_dir, train_states["value"], prefix="value"
     )
     target_value_state = checkpoints.restore_checkpoint(
-        checkpoint_dir, train_states.target_value, prefix="target_value"
+        checkpoint_dir, train_states["target_value"], prefix="target_value"
     )
     return TrainStates(
         actor_state, critic1_state, critic2_state, value_state, target_value_state

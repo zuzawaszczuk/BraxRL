@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from agent import sac_train
 from brax import envs
+
+from agent import sac_train
 
 xdata, ydata = [], []
 times = [datetime.now()]
