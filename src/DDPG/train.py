@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from matplotlib.pyplot import step
 import optax
 from flax.training.train_state import TrainState
 from replay_buffer import ReplayBuffer
@@ -36,15 +37,17 @@ def update_actor(actor_state, critic_state, batch_s):
     return actor_state.apply_gradients(grads=grads)
 
 
-def train_ddpg(actor, critic, env_name, episodes=100, max_steps=1000, batch_size=8,
+def train_ddpg(actor, critic, env_name, num_timesteps=1000, reward_scaling=1.0, batch_size=8,
                learning_rate=1e-3, gamma=0.99, tau=0.005, buffer_capacity=100000,
-               exploration_noise=0.01):
+               exploration_noise=0.2):
 
     key = jax.random.PRNGKey(0)
     # Split key for env reset and model init
     key, env_key, actor_key, critic_key = jax.random.split(key, 4)
     env = create(env_name=env_name)
     state = env.reset(rng=env_key)
+    obs = state.obs
+    ep_reward = 0.0
 
     obs_dim = state.obs.shape[0]
     action_dim = env.action_size
@@ -88,41 +91,42 @@ def train_ddpg(actor, critic, env_name, episodes=100, max_steps=1000, batch_size
     jit_env_step = jax.jit(env.step)
 
     print("Training started")
+    step_rewards = []
     episode_rewards = []
 
-    for ep in range(episodes):
-        key, env_key = jax.random.split(key)
-        state = env.reset(rng=env_key)
-        obs = state.obs
-        ep_reward = 0.0
-        for step in range(max_steps):
-            key, action_key = jax.random.split(key)
-            action = select_action(actor_state.params, obs, action_key)
-            new_state = jit_env_step(state, action)
+    for step in range(num_timesteps):
+
+        if state.done:
+            episode_rewards.append(ep_reward)
+            print(f'\n Steps: {step+1} Reward: {ep_reward:.2f}')
+            key, env_key = jax.random.split(key)
+            state = env.reset(rng=env_key)
             obs = state.obs
-            reward = new_state.reward
-            done = new_state.done
-            next_obs = new_state.obs
-            replay_buffer = replay_buffer.push(
-                state=obs,
-                action=action,
-                reward=reward,
-                next_state=next_obs,
-                done=done
+            ep_reward = 0.0
+
+        key, action_key = jax.random.split(key)
+        action = select_action(actor_state.params, obs, action_key)
+        new_state = jit_env_step(state, action)
+        obs = state.obs
+        reward = new_state.reward * reward_scaling
+        done = new_state.done
+        next_obs = new_state.obs
+        replay_buffer = replay_buffer.push(
+            state=obs,
+            action=action,
+            reward=reward,
+            next_state=next_obs,
+            done=done
+        )
+        step_rewards.append(float(reward))
+
+        state = new_state
+        ep_reward += float(reward)
+        if replay_buffer.size >= batch_size:
+            actor_state, critic_state, target_actor_params, target_critic_params, key = train_step(
+                actor_state, critic_state, target_actor_params, target_critic_params, replay_buffer, key
             )
 
-            state = new_state
-            ep_reward += float(reward)
-            if replay_buffer.size >= batch_size:
-                actor_state, critic_state, target_actor_params, target_critic_params, key = train_step(
-                    actor_state, critic_state, target_actor_params, target_critic_params, replay_buffer, key
-                )
-
-            if done:
-                break
-
-        episode_rewards.append(ep_reward)
-        print(f'\nEpisode {ep+1}, Reward: {ep_reward:.2f}, Steps: {step+1}')
 
     print("Training complete.")
-    return actor_state.params, critic_state.params, episode_rewards
+    return actor_state.params, critic_state.params, step_rewards, episode_rewards

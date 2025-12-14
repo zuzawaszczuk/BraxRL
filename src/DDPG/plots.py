@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 
 
-def create_plot(episode_rewards):
-    plt.plot(episode_rewards)
+def create_plot(step_rewards):
+    plt.plot(step_rewards)
     plt.title('DDPG Training Reward')
-    plt.xlabel('Episode')
+    plt.xlabel('Steps')
     plt.ylabel('Reward')
     plt.savefig('reward_plot.png')

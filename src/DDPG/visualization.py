@@ -3,7 +3,7 @@ import numpy as np
 from brax.io import html
 
 
-def visualize_policy(actor, params, env, episodes=1, max_steps=100):
+def  visualize_policy(actor, params, env, episodes=1, max_steps=100):
     jit_env_step = jax.jit(env.step)
 
     for ep in range(episodes):
