@@ -27,7 +27,7 @@ BufferState: TypeAlias = TrajectoryBufferState[Experience]
 def sac_train(
     env: envs,
     progress_fn,
-    num_timesteps=150, #6_553_600,
+    num_timesteps=6_553_600,
     num_evals=20,
     reward_scaling=30,  #
     episode_length=1000,
@@ -40,7 +40,7 @@ def sac_train(
     grad_updates_per_step=64,
     max_devices_per_host=1,
     max_replay_size=1048576,  #
-    min_replay_size=100,  # 8192,
+    min_replay_size=8192,
     seed=1,
     save_checkpoint_path="reports/checkpoints/ant",
 ):
