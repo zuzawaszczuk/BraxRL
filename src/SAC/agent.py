@@ -6,8 +6,10 @@ import flashbax as fbx
 import jax
 import jax.numpy as jnp
 import optax
+from actor import ActorNetwork, sample_normal
 from brax import envs
 from brax.envs.base import State as EnvState
+from critic import CriticNetwork
 from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
                                                 TrajectoryBufferState)
 from flax.training import checkpoints
@@ -15,10 +17,7 @@ from flax.training.train_state import TrainState
 from jax import jit
 from jax.lax import scan
 from jaxtyping import Array, PRNGKeyArray
-
-from actor import ActorNetwork, sample_normal
-from critic import CriticNetwork
-from training import learn, create_train_states, TrainStates
+from training import TrainStates, create_train_states, learn
 from value import ValueNetwork
 
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
@@ -69,7 +68,9 @@ def sac_train(
         score = 0
         episode_steps = 0
 
-        while not done and episode_steps < episode_length and time_steps < num_timesteps:
+        while (
+            not done and episode_steps < episode_length and time_steps < num_timesteps
+        ):
             rng, rng_action = jax.random.split(rng)
             action = choose_action(
                 params["actor"], observation.obs, max_action, rng_action
@@ -108,7 +109,9 @@ def choose_action(
     key: PRNGKeyArray,
     reparam_noise: float = 1e-6,
 ) -> Array:
-    actions, _ = sample_normal(actor, actor.params, state, max_action, key, False, reparam_noise)
+    actions, _ = sample_normal(
+        actor, actor.params, state, max_action, key, False, reparam_noise
+    )
 
     return jnp.squeeze(actions, axis=0)
 

@@ -1,16 +1,15 @@
 from dataclasses import dataclass
-from typing import Tuple, TypeAlias, Dict
+from typing import Dict, Tuple, TypeAlias
 
 import jax
 import jax.numpy as jnp
+from actor import sample_normal
 from flashbax.buffers.trajectory_buffer import (Experience, TrajectoryBuffer,
                                                 TrajectoryBufferSample,
                                                 TrajectoryBufferState)
 from flax.training.train_state import TrainState
 from jax.lax import scan
 from jaxtyping import PRNGKeyArray
-
-from actor import sample_normal
 
 BufferState: TypeAlias = TrajectoryBufferState[Experience]
 TrainStates = Dict[str, TrainState]
@@ -67,8 +66,12 @@ def update_value_network(
         params["actor"], params["actor"].params, batch_state, max_action, key, False
     )
 
-    q1_new_policy = params["critic1"].apply_fn(params["critic1"].params, batch_state, actions)
-    q2_new_policy = params["critic2"].apply_fn(params["critic2"].params, batch_state, actions)
+    q1_new_policy = params["critic1"].apply_fn(
+        params["critic1"].params, batch_state, actions
+    )
+    q2_new_policy = params["critic2"].apply_fn(
+        params["critic2"].params, batch_state, actions
+    )
 
     critic_value = jnp.minimum(q1_new_policy, q2_new_policy)
     # y = min(Q1, Q2) - log π(a|s)
@@ -109,7 +112,12 @@ def update_actor_network(
 
     def actor_loss_fn(actor_params):
         actions, log_probs = sample_normal(
-            params["actor"], actor_params, batch_state, max_action, key, reparameterize=True
+            params["actor"],
+            actor_params,
+            batch_state,
+            max_action,
+            key,
+            reparameterize=True,
         )
 
         q1 = params["critic1"].apply_fn(params["critic1"].params, batch_state, actions)
@@ -134,7 +142,9 @@ def update_critic_networks(
     gamma: float = 0.99,
 ) -> Tuple[TrainState, TrainState]:
     batch = batch.experience.first
-    value_ = params["target_value"].apply_fn(params["target_value"].params, batch["state"])
+    value_ = params["target_value"].apply_fn(
+        params["target_value"].params, batch["state"]
+    )
     q_hat = reward_scaling * batch["reward"] + gamma * value_
 
     def critic1_loss_fn(critic1_params):
@@ -161,12 +171,12 @@ def create_train_states(
     critic1_state: TrainState,
     critic2_state: TrainState,
     value_state: TrainState,
-    target_value_state: TrainState
+    target_value_state: TrainState,
 ) -> TrainStates:
     return {
         "actor": actor_state,
         "critic1": critic1_state,
         "critic2": critic2_state,
         "value": value_state,
-        "target_value": target_value_state
+        "target_value": target_value_state,
     }

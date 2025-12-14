@@ -1,8 +1,8 @@
 from datetime import datetime
-import matplotlib.pyplot as plt
-from brax import envs
 
+import matplotlib.pyplot as plt
 from agent import sac_train
+from brax import envs
 
 
 def make_plot(env_name, xdata, ydata):
