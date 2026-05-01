@@ -1,17 +1,17 @@
-from brax.training.agents.ppo.checkpoint import load_policy
-from brax import envs
-import jax
-from brax.io import html
 import argparse
 import os
 
+import jax
+from brax import envs
+from brax.io import html
+from brax.training.agents.ppo.checkpoint import load_policy
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--env_name', type=str, default='ant')
+parser.add_argument("--env_name", type=str, default="ant")
 args = parser.parse_args()
 
 env_name = args.env_name
-backend = 'positional'
+backend = "positional"
 # checkpoint_path = f"reports/checkpoints/{env_name}"
 checkpoint_path = os.path.abspath("reports/checkpoints/ant/000050135040")
 
@@ -31,6 +31,6 @@ for _ in range(1000):
     act, _ = jit_inference_fn(state.obs, act_rng)
     state = jit_env_step(state, act)
 
-html_string = html.render(env.sys.tree_replace({'opt.timestep': env.dt}), rollout)
+html_string = html.render(env.sys.tree_replace({"opt.timestep": env.dt}), rollout)
 with open(f"reports/visualizations/{env_name}.html", "w", encoding="utf-8") as f:
     f.write(html_string)
