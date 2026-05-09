@@ -1,3 +1,4 @@
+from numpy.lib import _index_tricks_impl
 import jax
 import jax.numpy as jnp
 from matplotlib.pyplot import step
@@ -37,14 +38,13 @@ def update_actor(actor_state, critic_state, batch_s):
     return actor_state.apply_gradients(grads=grads)
 
 
-def train_ddpg(actor, critic, env_name, num_timesteps=1000, reward_scaling=1.0, batch_size=8,
+def train_ddpg(actor, critic, env, num_timesteps=1000, reward_scaling=1.0, batch_size=8,
                learning_rate=1e-3, gamma=0.99, tau=0.005, buffer_capacity=100000,
-               exploration_noise=0.2):
+               exploration_noise=0.2, start_steps=0, progress_callback=None):
 
     key = jax.random.PRNGKey(0)
     # Split key for env reset and model init
     key, env_key, actor_key, critic_key = jax.random.split(key, 4)
-    env = create(env_name=env_name)
     state = env.reset(rng=env_key)
     obs = state.obs
     ep_reward = 0.0
@@ -69,7 +69,7 @@ def train_ddpg(actor, critic, env_name, num_timesteps=1000, reward_scaling=1.0, 
     replay_buffer = ReplayBuffer.create(obs_dim=obs_dim, act_dim=action_dim, capacity=buffer_capacity)
 
     @jax.jit
-    def select_action(params, obs, key):
+    def select_action(params, obs, key, exploration_noise):
         action = actor.apply(params, obs)
         noise = jax.random.normal(key, shape=action.shape) * exploration_noise
         return jnp.clip(action + noise, -1.0, 1.0)
@@ -103,9 +103,15 @@ def train_ddpg(actor, critic, env_name, num_timesteps=1000, reward_scaling=1.0, 
             state = env.reset(rng=env_key)
             obs = state.obs
             ep_reward = 0.0
+            if progress_callback is not None:
+                progress_callback(obs, action, reward, step)
 
         key, action_key = jax.random.split(key)
-        action = select_action(actor_state.params, obs, action_key)
+        exploration_noise = exploration_noise if step < 50000 else 0.001
+        if step < start_steps:
+            action = jax.random.normal(action_key, shape=(action_dim,))
+        else:
+            action = select_action(actor_state.params, obs, action_key, exploration_noise)
         new_state = jit_env_step(state, action)
         obs = state.obs
         reward = new_state.reward * reward_scaling
