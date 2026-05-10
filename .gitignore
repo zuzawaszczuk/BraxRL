@@ -1,10 +1,6 @@
-brax2
 # Athena files
 *.sh
 slurm*
-
-# brax library 
-brax/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
