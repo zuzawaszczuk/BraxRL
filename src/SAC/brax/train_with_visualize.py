@@ -21,7 +21,7 @@ env_name = (
     args.env_name
 )  # @param ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
 backend = "positional"  # @param ['generalized', 'positional', 'spring']
-checkpoint_dir = os.path.abspath(f"reports/checkpoints/{env_name}")
+checkpoint_dir = os.path.abspath(f"reports/checkpoints/{env_name}_small")
 
 train_fn = {
     "inverted_pendulum": functools.partial(
@@ -217,5 +217,5 @@ for _ in range(1000):
     state = jit_env_step(state, act)
 
 html_string = html.render(env.sys.tree_replace({"opt.timestep": env.dt}), rollout)
-with open(f"reports/visualizations/{env_name}.html", "w", encoding="utf-8") as f:
+with open(f"reports/visualizations/{env_name}small.html", "w", encoding="utf-8") as f:
     f.write(html_string)
