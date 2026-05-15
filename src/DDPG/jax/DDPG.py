@@ -1,8 +1,8 @@
 import pickle
-from nn import Actor, Critic
-from visualization import visualize_policy
-from plots import create_plot, visualize_obs_history, visualize_act_history
-from train import train_ddpg
+from src.DDPG.jax.nn import Actor, Critic
+from src.DDPG.jax.visualization import visualize_policy
+from src.DDPG.jax.plots import create_plot, visualize_obs_history, visualize_act_history
+from src.DDPG.jax.train import train_ddpg
 from brax.envs import get_environment
 
 

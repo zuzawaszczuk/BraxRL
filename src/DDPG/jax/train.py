@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from matplotlib.pyplot import step
 import optax
 from flax.training.train_state import TrainState
-from replay_buffer import ReplayBuffer
+from src.DDPG.jax.replay_buffer import ReplayBuffer
 from brax.envs import create
 
 
